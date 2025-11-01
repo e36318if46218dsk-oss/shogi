@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>将棋</title>
+    <style>
+        body {
+            font-family: 'MS Gothic', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(9, 50px);
+            grid-template-rows: repeat(9, 50px);
+            gap: 0;
+            border: 3px solid #333;
+            margin: 20px auto;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            border: 1px solid #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            background: #f0d9b5;
+            position: relative;
+        }
+        .cell:hover {
+            background: #ddd;
+        }
+        .cell.selected {
+            background: #7fc97f !important;
+        }
+        .cell.movable {
+            background: #ffd700 !important;
+        }
+        .piece {
+            user-select: none;
+        }
+        .enemy {
+            transform: rotate(180deg);
+        }
+        .info {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .captured {
+            margin: 15px 0;
+            padding: 10px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            min-height: 40px;
+        }
+        .captured-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .captured-pieces {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .captured-piece {
+            padding: 5px 10px;
+            background: #e0e0e0;
+            border: 1px solid #999;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .captured-piece:hover {
+            background: #ffd700;
+        }
+        .captured-piece.selected {
+            background: #7fc97f;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .promoted {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center;">将棋</h1>
+        <div class="info" id="status">先手（あなた）の番です</div>
+        
+        <div class="captured">
+            <div class="captured-title">相手の持ち駒</div>
+            <div class="captured-pieces" id="enemyCaptured"></div>
+        </div>
+        
+        <div class="board" id="board"></div>
+        
+        <div class="captured">
+            <div class="captured-title">あなたの持ち駒</div>
+            <div class="captured-pieces" id="playerCaptured"></div>
+        </div>
+        
+        <div style="text-align: center;">
+            <button onclick="resetGame()">ゲームリセット</button>
+        </div>
+    </div>
+
+    <script>
+        const pieces = {
+            '王': [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]],
+            '飛': [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,-1],[0,-2],[0,-3],[0,-4],[0,-5],[0,-6],[0,-7],[0,-8],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[-1,0],[-2,0],[-3,0],[-4,0],[-5,0],[-6,0],[-7,0],[-8,0]],
+            '角': [[1,1],[2,2],[3,3],[4,4],[5,5],[6,6],[7,7],[8,8],[1,-1],[2,-2],[3,-3],[4,-4],[5,-5],[6,-6],[7,-7],[8,-8],[-1,1],[-2,2],[-3,3],[-4,4],[-5,5],[-6,6],[-7,7],[-8,8],[-1,-1],[-2,-2],[-3,-3],[-4,-4],[-5,-5],[-6,-6],[-7,-7],[-8,-8]],
+            '金': [[0,1],[1,1],[-1,1],[1,0],[-1,0],[0,-1]],
+            '銀': [[0,1],[1,1],[-1,1],[1,-1],[-1,-1]],
+            '桂': [[1,2],[-1,2]],
+            '香': [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8]],
+            '歩': [[0,1]],
+            '龍': [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,-1],[0,-2],[0,-3],[0,-4],[0,-5],[0,-6],[0,-7],[0,-8],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[-1,0],[-2,0],[-3,0],[-4,0],[-5,0],[-6,0],[-7,0],[-8,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+            '馬': [[1,1],[2,2],[3,3],[4,4],[5,5],[6,6],[7,7],[8,8],[1,-1],[2,-2],[3,-3],[4,-4],[5,-5],[6,-6],[7,-7],[8,-8],[-1,1],[-2,2],[-3,3],[-4,4],[-5,5],[-6,6],[-7,7],[-8,8],[-1,-1],[-2,-2],[-3,-3],[-4,-4],[-5,-5],[-6,-6],[-7,-7],[-8,-8],[0,1],[1,0],[-1,0],[0,-1]],
+            '全': [[0,1],[1,1],[-1,1],[1,0],[-1,0],[0,-1]],
+            'と': [[0,1],[1,1],[-1,1],[1,0],[-1,0],[0,-1]],
+            '杏': [[0,1],[1,1],[-1,1],[1,0],[-1,0],[0,-1]],
+            '圭': [[0,1],[1,1],[-1,1],[1,0],[-1,0],[0,-1]]
+        };
+
+        let board = Array(9).fill(null).map(() => Array(9).fill(null));
+        let selectedCell = null;
+        let selectedCaptured = null;
+        let currentPlayer = 'player';
+        let playerCaptured = [];
+        let enemyCaptured = [];
+
+        function initBoard() {
+            board = Array(9).fill(null).map(() => Array(9).fill(null));
+            
+            board[0] = [
+                {type: '香', owner: 'enemy'}, {type: '桂', owner: 'enemy'}, {type: '銀', owner: 'enemy'},
+                {type: '金', owner: 'enemy'}, {type: '王', owner: 'enemy'}, {type: '金', owner: 'enemy'},
+                {type: '銀', owner: 'enemy'}, {type: '桂', owner: 'enemy'}, {type: '香', owner: 'enemy'}
+            ];
+            board[1][1] = {type: '飛', owner: 'enemy'};
+            board[1][7] = {type: '角', owner: 'enemy'};
+            board[2] = Array(9).fill(null).map(() => ({type: '歩', owner: 'enemy'}));
+
+            board[6] = Array(9).fill(null).map(() => ({type: '歩', owner: 'player'}));
+            board[7][7] = {type: '角', owner: 'player'};
+            board[7][1] = {type: '飛', owner: 'player'};
+            board[8] = [
+                {type: '香', owner: 'player'}, {type: '桂', owner: 'player'}, {type: '銀', owner: 'player'},
+                {type: '金', owner: 'player'}, {type: '王', owner: 'player'}, {type: '金', owner: 'player'},
+                {type: '銀', owner: 'player'}, {type: '桂', owner: 'player'}, {type: '香', owner: 'player'}
+            ];
+
+            playerCaptured = [];
+            enemyCaptured = [];
+            currentPlayer = 'player';
+            selectedCell = null;
+            selectedCaptured = null;
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    
+                    if (board[i][j]) {
+                        const piece = document.createElement('span');
+                        piece.className = 'piece';
+                        if (board[i][j].owner === 'enemy') piece.classList.add('enemy');
+                        if (board[i][j].promoted) piece.classList.add('promoted');
+                        piece.textContent = board[i][j].type;
+                        cell.appendChild(piece);
+                    }
+                    
+                    cell.onclick = () => handleCellClick(i, j);
+                    boardEl.appendChild(cell);
+                }
+            }
+            
+            renderCaptured();
+            updateStatus();
+        }
+
+        function renderCaptured() {
+            const playerEl = document.getElementById('playerCaptured');
+            const enemyEl = document.getElementById('enemyCaptured');
+            
+            playerEl.innerHTML = '';
+            enemyEl.innerHTML = '';
+            
+            playerCaptured.forEach((p, idx) => {
+                const piece = document.createElement('span');
+                piece.className = 'captured-piece';
+                piece.textContent = p;
+                piece.onclick = () => selectCapturedPiece('player', idx);
+                playerEl.appendChild(piece);
+            });
+            
+            enemyCaptured.forEach(p => {
+                const piece = document.createElement('span');
+                piece.className = 'captured-piece';
+                piece.textContent = p;
+                enemyEl.appendChild(piece);
+            });
+        }
+
+        function selectCapturedPiece(owner, idx) {
+            if (currentPlayer !== owner) return;
+            selectedCell = null;
+            selectedCaptured = {owner, idx};
+            renderBoard();
+            highlightDropZones();
+        }
+
+        function highlightDropZones() {
+            document.querySelectorAll('.cell').forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                if (!board[row][col]) {
+                    cell.classList.add('movable');
+                }
+            });
+        }
+
+        function handleCellClick(row, col) {
+            if (currentPlayer !== 'player') return;
+            
+            if (selectedCaptured) {
+                if (!board[row][col]) {
+                    const piece = playerCaptured[selectedCaptured.idx];
+                    board[row][col] = {type: piece, owner: 'player'};
+                    playerCaptured.splice(selectedCaptured.idx, 1);
+                    selectedCaptured = null;
+                    currentPlayer = 'enemy';
+                    renderBoard();
+                    setTimeout(computerMove, 500);
+                }
+                return;
+            }
+
+            if (selectedCell) {
+                const [sr, sc] = selectedCell;
+                if (canMove(sr, sc, row, col)) {
+                    makeMove(sr, sc, row, col);
+                }
+                selectedCell = null;
+                renderBoard();
+            } else {
+                if (board[row][col] && board[row][col].owner === 'player') {
+                    selectedCell = [row, col];
+                    renderBoard();
+                    highlightMoves(row, col);
+                }
+            }
+        }
+
+        function highlightMoves(row, col) {
+            const cells = document.querySelectorAll('.cell');
+            cells[row * 9 + col].classList.add('selected');
+            
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (canMove(row, col, i, j)) {
+                        cells[i * 9 + j].classList.add('movable');
+                    }
+                }
+            }
+        }
+
+        function canMove(fromR, fromC, toR, toC) {
+            if (toR < 0 || toR > 8 || toC < 0 || toC > 8) return false;
+            
+            const piece = board[fromR][fromC];
+            if (!piece) return false;
+            
+            if (board[toR][toC] && board[toR][toC].owner === piece.owner) return false;
+            
+            const moves = pieces[piece.type];
+            if (!moves) return false;
+            
+            const dr = piece.owner === 'player' ? -(toR - fromR) : (toR - fromR);
+            const dc = toC - fromC;
+            
+            for (let move of moves) {
+                if (piece.type === '飛' || piece.type === '角' || piece.type === '香' || piece.type === '龍' || piece.type === '馬') {
+                    if (move[0] === 0 && move[1] === 0) continue;
+                    const dirR = move[1] === 0 ? 0 : move[1] / Math.abs(move[1]);
+                    const dirC = move[0] === 0 ? 0 : move[0] / Math.abs(move[0]);
+                    
+                    if ((dirR === 0 && dr !== 0) || (dirC === 0 && dc !== 0)) continue;
+                    if (dirR !== 0 && dirC !== 0 && dr * dirC !== dc * dirR) continue;
+                    if (dirR === 0 && dirC === 0) continue;
+                    
+                    let checkR = fromR;
+                    let checkC = fromC;
+                    let pathClear = true;
+                    
+                    while (true) {
+                        checkR += (piece.owner === 'player' ? -dirR : dirR);
+                        checkC += dirC;
+                        
+                        if (checkR < 0 || checkR > 8 || checkC < 0 || checkC > 8) break;
+                        if (checkR === toR && checkC === toC) return true;
+                        if (board[checkR][checkC]) {
+                            pathClear = false;
+                            break;
+                        }
+                    }
+                } else {
+                    if (move[1] === dr && move[0] === dc) return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function makeMove(fromR, fromC, toR, toC) {
+            const piece = board[fromR][fromC];
+            
+            if (board[toR][toC]) {
+                const captured = board[toR][toC];
+                let capturedType = captured.type;
+                if (captured.promoted) {
+                    if (capturedType === '龍') capturedType = '飛';
+                    else if (capturedType === '馬') capturedType = '角';
+                    else capturedType = '歩';
+                }
+                
+                if (piece.owner === 'player') {
+                    playerCaptured.push(capturedType);
+                } else {
+                    enemyCaptured.push(capturedType);
+                }
+            }
+            
+            board[toR][toC] = piece;
+            board[fromR][fromC] = null;
+            
+            if (canPromote(piece, toR, fromR) && !piece.promoted) {
+                if (piece.owner === 'player' && confirm('成りますか？')) {
+                    promote(toR, toC);
+                } else if (piece.owner === 'enemy' && Math.random() > 0.3) {
+                    promote(toR, toC);
+                }
+            }
+            
+            currentPlayer = currentPlayer === 'player' ? 'enemy' : 'player';
+            
+            if (isCheckmate(currentPlayer === 'player' ? 'enemy' : 'player')) {
+                alert((currentPlayer === 'player' ? '相手' : 'あなた') + 'の勝ちです！');
+            }
+        }
+
+        function canPromote(piece, toR, fromR) {
+            if (piece.type === '王' || piece.type === '金' || piece.promoted) return false;
+            
+            if (piece.owner === 'player') {
+                return toR <= 2 || fromR <= 2;
+            } else {
+                return toR >= 6 || fromR >= 6;
+            }
+        }
+
+        function promote(row, col) {
+            const piece = board[row][col];
+            const promotionMap = {
+                '歩': 'と', '香': '杏', '桂': '圭', '銀': '全',
+                '飛': '龍', '角': '馬'
+            };
+            
+            if (promotionMap[piece.type]) {
+                piece.type = promotionMap[piece.type];
+                piece.promoted = true;
+            }
+        }
+
+        function isCheckmate(owner) {
+            let kingPos = null;
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (board[i][j] && board[i][j].owner === owner && board[i][j].type === '王') {
+                        kingPos = [i, j];
+                        break;
+                    }
+                }
+                if (kingPos) break;
+            }
+            
+            if (!kingPos) return true;
+            
+            return false;
+        }
+
+        function computerMove() {
+            if (currentPlayer !== 'enemy') return;
+            
+            let bestMove = null;
+            let bestScore = -Infinity;
+            
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (board[i][j] && board[i][j].owner === 'enemy') {
+                        for (let ti = 0; ti < 9; ti++) {
+                            for (let tj = 0; tj < 9; tj++) {
+                                if (canMove(i, j, ti, tj)) {
+                                    const score = evaluateMove(i, j, ti, tj);
+                                    if (score > bestScore) {
+                                        bestScore = score;
+                                        bestMove = {from: [i, j], to: [ti, tj]};
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (enemyCaptured.length > 0 && Math.random() > 0.7) {
+                for (let i = 0; i < 9; i++) {
+                    for (let j = 0; j < 9; j++) {
+                        if (!board[i][j]) {
+                            const idx = Math.floor(Math.random() * enemyCaptured.length);
+                            board[i][j] = {type: enemyCaptured[idx], owner: 'enemy'};
+                            enemyCaptured.splice(idx, 1);
+                            currentPlayer = 'player';
+                            renderBoard();
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            if (bestMove) {
+                const [fr, fc] = bestMove.from;
+                const [tr, tc] = bestMove.to;
+                makeMove(fr, fc, tr, tc);
+                renderBoard();
+            }
+        }
+
+        function evaluateMove(fromR, fromC, toR, toC) {
+            let score = Math.random() * 10;
+            
+            if (board[toR][toC]) {
+                const pieceValue = {'歩':1,'香':3,'桂':3,'銀':5,'金':6,'角':8,'飛':9,'王':100};
+                score += pieceValue[board[toR][toC].type] || 5;
+            }
+            
+            score += (8 - toR) * 2;
+            
+            return score;
+        }
+
+        function updateStatus() {
+            document.getElementById('status').textContent = 
+                currentPlayer === 'player' ? '先手（あなた）の番です' : '後手（コンピュータ）の番です';
+        }
+
+        function resetGame() {
+            initBoard();
+            renderBoard();
+        }
+
+        initBoard();
+        renderBoard();
+    </script>
+</body>
+</html>
